@@ -22,9 +22,9 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 
-.fake
-.ionide
+**/.fake
+**/.ionide
 
 # Ignore bld and obj
-Project4_1/bin
-Project4_1/obj
+**/bin
+**/obj
