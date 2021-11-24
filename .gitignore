@@ -28,4 +28,5 @@ hs_err_pid*
 # Ignore bld and obj
 **/bin
 **/obj
+**/.DS_Store
  
