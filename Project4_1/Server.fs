@@ -23,7 +23,7 @@ let configuration =
             }
             remote.helios.tcp {
                 transport-protocol = tcp
-                port = 8776
+                port = 8282
                 hostname = %s
             }
         }" serverip)
@@ -73,12 +73,16 @@ type TweetMessages =
     | PrintTweetStats of (Map<string,Set<string>>*Map<string,string>*uint64)
     | IncTweet of (string)
 
+type RequestHandlerMessages =
+    | Start
+    | 
+
 let TweetActor (mailbox:Actor<_>) = 
     let mutable cprinters = Map.empty
     let mutable tweetCount = 0.0
     let mutable usersTweetCount = Map.empty
-    let mutable hashTagActor = mailbox.Self
-    let mutable usersActor = mailbox.Self
+    let mutable hashTagActor:IActorRef = null
+    let mutable usersActor:IActorRef = null
     let mutable twTotalTime = 0.0
     let rec loop () = actor {
         let! message = mailbox.Receive() 
@@ -87,8 +91,10 @@ let TweetActor (mailbox:Actor<_>) =
         | InitTweet(htactor,uactor) ->
             hashTagActor <- htactor
             usersActor <- uactor
+
         | UpdateTweetsClientPrinters(ob) ->
             cprinters <- ob
+
         | Tweet(cid, uid, twt, reqTime,boss) ->
             tweetCount <- tweetCount+1.0
             let mutable twCount = 0
@@ -103,12 +109,14 @@ let TweetActor (mailbox:Actor<_>) =
             usersActor <! UpdateFeeds(cid,uid,twt, "tweeted", DateTime.Now)
             twTotalTime <- twTotalTime + (timestamp.Subtract reqTime).TotalMilliseconds
             let averageTime = twTotalTime / tweetCount
-            boss <! ("ServiceStats","","Tweet",(averageTime |> string),DateTime.Now)    
+            boss <! ("ServiceStats","","Tweet",(averageTime |> string),DateTime.Now)
+
         | IncTweet(uid) ->
             if usersTweetCount.ContainsKey uid then 
                 let twCount = (usersTweetCount.[uid] + 1)
                 usersTweetCount <- Map.remove uid usersTweetCount  
-                usersTweetCount <- Map.add uid twCount usersTweetCount          
+                usersTweetCount <- Map.add uid twCount usersTweetCount  
+
         | PrintTweetStats(followings,reqStats,perf) ->
             File.WriteAllText(path, "")
             File.AppendAllText(path, ("\n"+timestamp.ToString()))
@@ -125,46 +133,13 @@ let TweetActor (mailbox:Actor<_>) =
         return! loop()
     }
     loop()
-    
-let ShowfeedActor (mailbox:Actor<_>) = 
-    let mutable cprinters = Map.empty
-    let mutable feedtable = Map.empty
-    let rec loop () = actor {
-        let! message = mailbox.Receive() 
-        let timestamp = DateTime.Now
-        match message with
-        | UpdateShowFeedClientPrinters(ob) ->
-            cprinters <- ob
-        | ShowFeeds(cid, uid, cadmin) ->
-            if feedtable.ContainsKey uid then
-                let mutable feedsTop = ""
-                let mutable fSize = 10
-                let feedList:List<string> = feedtable.[uid]
-                if feedList.Length < 10 then
-                    fSize <- feedList.Length
-                for i in [0..(fSize-1)] do
-                    feedsTop <- "\n" + feedtable.[uid].[i]
-                cprinters.[cid] <! sprintf "[%s][ONLINE] User %s is online..Feeds -> %s" (timestamp.ToString()) uid feedsTop
-            else
-                cprinters.[cid] <! sprintf "[%s][ONLINE] User %s is online..No feeds yet!!!" (timestamp.ToString()) uid
-            cadmin <! ("AckOnline", uid, "", "", "")
-        | UpdateFeedTable(uid, _, twt) ->
-            let mutable listy = []
-            if feedtable.ContainsKey uid then
-                listy <- feedtable.[uid]
-            listy  <- twt :: listy
-            feedtable <- Map.remove uid feedtable
-            feedtable <- Map.add uid listy feedtable
-        return! loop()
-    }
-    loop()
 
 let RetweetActor (mailbox:Actor<_>) = 
     let mutable cprinters = Map.empty
     let mutable feedtable = Map.empty
     let mutable usersRand = Random()
-    let mutable usersactor = mailbox.Self
-    let mutable tweetactor = mailbox.Self
+    let mutable usersactor:IActorRef = null
+    let mutable tweetactor:IActorRef = null
     let mutable reTweetCount = 0.0
     let mutable reTweetTime = 0.0
     let rec loop () = actor {
@@ -174,8 +149,10 @@ let RetweetActor (mailbox:Actor<_>) =
         | InitRetweet(uactor,tactor) ->
             usersactor <- uactor
             tweetactor <- tactor
+
         | UpdateRetweetClientPrinters(ob) ->
             cprinters <- ob
+
         | RetweetFeedTable(uid,_,twt) ->
             let mutable listy = []
             if feedtable.ContainsKey uid then
@@ -183,6 +160,7 @@ let RetweetActor (mailbox:Actor<_>) =
             listy  <- twt :: listy
             feedtable <- Map.remove uid feedtable
             feedtable <- Map.add uid listy feedtable
+
         | Retweet(cid,uid,reqTime) ->
             if feedtable.ContainsKey uid then   
                 reTweetCount <- reTweetCount + 1.0
@@ -198,6 +176,42 @@ let RetweetActor (mailbox:Actor<_>) =
     }
     loop()
 
+let ShowfeedActor (mailbox:Actor<_>) = 
+    let mutable cprinters = Map.empty
+    let mutable feedtable = Map.empty
+    let rec loop () = actor {
+        let! message = mailbox.Receive() 
+        let timestamp = DateTime.Now
+        match message with
+        | UpdateShowFeedClientPrinters(ob) ->
+            cprinters <- ob
+
+        | ShowFeeds(cid, uid, cadmin) ->
+            if feedtable.ContainsKey uid then
+                let mutable feedsTop = ""
+                let mutable fSize = 10
+                let feedList:List<string> = feedtable.[uid]
+                if feedList.Length < 10 then
+                    fSize <- feedList.Length
+                for i in [0..(fSize-1)] do
+                    feedsTop <- "\n" + feedtable.[uid].[i]
+                cprinters.[cid] <! sprintf "[%s][ONLINE] User %s is online..Feeds -> %s" (timestamp.ToString()) uid feedsTop
+            else
+                cprinters.[cid] <! sprintf "[%s][ONLINE] User %s is online..No feeds yet!!!" (timestamp.ToString()) uid
+            cadmin <! ("AckOnline", uid, "", "", "")
+
+        | UpdateFeedTable(uid, _, twt) ->
+            let mutable listy = []
+            if feedtable.ContainsKey uid then
+                listy <- feedtable.[uid]
+            listy  <- twt :: listy
+            feedtable <- Map.remove uid feedtable
+            feedtable <- Map.add uid listy feedtable
+        return! loop()
+    }
+    loop()
+
+
 let HashTagsActor (mailbox:Actor<_>) = 
     let mutable cprinters = Map.empty
     let mutable hashtagsMap = Map.empty
@@ -209,6 +223,7 @@ let HashTagsActor (mailbox:Actor<_>) =
         match message with
         | UpdateHashTagsClientPrinters(ob) ->
             cprinters <- ob
+
         | ParseHashTags(_,_,twt) ->
             let parsed = twt.Split ' '
             for parse in parsed do
@@ -221,6 +236,7 @@ let HashTagsActor (mailbox:Actor<_>) =
                     hashtagsMap <- Map.remove parsedTag hashtagsMap
                     hashtagsMap <- Map.add parsedTag tList hashtagsMap
                     ignore()
+
         | QueryHashtags(cid,uid,hashtag,reqTime) ->
             if cprinters.ContainsKey cid then
                 queryHTCount <- queryHTCount+1.0
@@ -245,7 +261,7 @@ let HashTagsActor (mailbox:Actor<_>) =
 
 let MentionsActor (mailbox:Actor<_>) = 
     let mutable users = Set.empty
-    let mutable tweetActor = mailbox.Self
+    let mutable tweetActor:IActorRef = null
     let mutable mentionsMap = Map.empty
     let mutable cprinters = Map.empty
     let mutable queryTotalTime = 1.0
@@ -256,11 +272,14 @@ let MentionsActor (mailbox:Actor<_>) =
         match message with
         | InitMentions(tactor) ->
             tweetActor <- tactor
+
         | UpdateMentionsClientPrinters(ob) ->
             cprinters <- ob
+
         | MentionsRegister(_,uid) ->
             users <- Set.add uid users
             mentionsMap <- Map.add uid List.empty mentionsMap
+
         | ParseMentions(cid, uid, twt,reqTime) ->
             if users.Contains uid then
                 let parsed = twt.Split ' '
@@ -277,6 +296,7 @@ let MentionsActor (mailbox:Actor<_>) =
                             tweetActor <! Tweet(cid, uid, twt,reqTime,mailbox.Sender())
                 if not mentionFound then 
                     tweetActor <! Tweet(cid, uid, twt,reqTime,mailbox.Sender())
+
         | QueryMentions(cid,uid,mention,reqTime) ->
             if cprinters.ContainsKey cid then
                 queryCount <- queryCount+1.0
@@ -297,10 +317,10 @@ let MentionsActor (mailbox:Actor<_>) =
     }
     loop()
 
-let UsersActor (mailbox:Actor<_>) = 
-    let mutable retweetactor = mailbox.Self
-    let mutable showfeedactor = mailbox.Self
-    let mutable tweetactor = mailbox.Self
+let ServerUsersActor (mailbox:Actor<_>) = 
+    let mutable retweetactor:IActorRef = null
+    let mutable tweetactor:IActorRef = null
+    let mutable showfeedactor:IActorRef = null
     let mutable cprinters = Map.empty
     let mutable users = Set.empty
     let mutable followings = Map.empty
@@ -317,25 +337,30 @@ let UsersActor (mailbox:Actor<_>) =
             showfeedactor <- feedactor
             tweetactor <- tactor
             ignore()
+
         | UpdateUserClientPrinters(ob) ->
             cprinters <- ob
             ignore()
+
         | Register(_, uid, scount,reqTime) ->
             users <- Set.add uid users
             subsrank <- Map.add uid (scount |> int) subsrank
             followings <- Map.add uid Set.empty followings
             followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds
             userServiceCount <- userServiceCount + 1.0
+
         | Offline(cid, uid, reqTime) ->
             nonactiveusers <- Set.add uid nonactiveusers
             followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds
             userServiceCount <- userServiceCount + 1.0
             cprinters.[cid] <! sprintf "[%s][OFFLINE] User %s is going offline" (timestamp.ToString()) uid
+
         | Online(cid, uid, cadmin, reqTime) ->
             nonactiveusers <- Set.remove uid nonactiveusers
             showfeedactor <! ShowFeeds(cid, uid, cadmin)
             followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds
             userServiceCount <- userServiceCount + 1.0
+
         | Follow(cid, uid, fid, reqTime) ->
             userServiceCount <- userServiceCount + 1.0
             if followings.ContainsKey fid && not (followings.[fid].Contains uid) && followings.[fid].Count < subsrank.[fid] then
@@ -345,6 +370,7 @@ let UsersActor (mailbox:Actor<_>) =
                 followings <- Map.add fid st followings
                 cprinters.[cid] <! sprintf "[%s][FOLLOW] User %s started following %s" (timestamp.ToString()) uid fid
             followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds
+
         | UpdateFeeds(_,uid,twt,msg, reqTime) ->
             userServiceCount <- userServiceCount + 1.0
             for id in followings.[uid] do
@@ -357,7 +383,8 @@ let UsersActor (mailbox:Actor<_>) =
                         cprinters.[sendtoid] <! sprintf "[%s][NEW_FEED] For User: %s -> %s" (timestamp.ToString()) id twt    
                     else
                         cprinters.[sendtoid] <! sprintf "[%s][NEW_FEED] For User: %s -> %s %s - %s" (timestamp.ToString()) id uid msg twt
-            followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds   
+            followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds
+
         | UsersPrint(stats, perf, reqTime) -> 
             userServiceCount <- userServiceCount + 1.0
             tweetactor <! PrintTweetStats(followings,stats,perf)
@@ -369,13 +396,13 @@ let UsersActor (mailbox:Actor<_>) =
     }
     loop()
 
-let ServerActor (mailbox:Actor<_>) = 
-    let mutable hashtagactor = mailbox.Self
-    let mutable tweetactor = mailbox.Self
-    let mutable mentionsactor = mailbox.Self
-    let mutable usersactor = mailbox.Self
-    let mutable retweetactor = mailbox.Self
-    let mutable showfeedactor = mailbox.Self
+let ServerRequestsHandler (mailbox:Actor<_>) = 
+    let mutable hashtagactor:IActorRef = null
+    let mutable tweetactor:IActorRef = null
+    let mutable mentionsactor:IActorRef = null
+    let mutable usersactor:IActorRef = null
+    let mutable retweetactor:IActorRef = null
+    let mutable showfeedactor:IActorRef = null
     let mutable clientprinters = Map.empty
     let mutable requests = 0UL
     let mutable starttime = DateTime.Now
@@ -398,7 +425,7 @@ let ServerActor (mailbox:Actor<_>) =
             hashtagactor <- spawn system (sprintf "HashTagsActor") HashTagsActor
             tweetactor <- spawn system (sprintf "TweetActor") TweetActor
             mentionsactor <- spawn system (sprintf "MentionsActor") MentionsActor
-            usersactor <- spawn system (sprintf "UsersActor") UsersActor
+            usersactor <- spawn system (sprintf "UsersActor") ServerUsersActor
             retweetactor <- spawn system (sprintf "RetweetActor") RetweetActor
             showfeedactor <- spawn system (sprintf "ShowfeedActor") ShowfeedActor
             //send actors the needed info
@@ -408,7 +435,7 @@ let ServerActor (mailbox:Actor<_>) =
             
             retweetactor <! InitRetweet(usersactor,tweetactor)
             starttime <- DateTime.Now
-            system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(5000.0), mailbox.Self, ("PrintStats","","","",DateTime.Now))
+            system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(5000.0), mailbox.Self, ("PrintStatistics","","","",DateTime.Now))
         | "ClientRegister" -> 
             let (_,cid,cliIP,port,_) : Tuple<string,string,string,string,DateTime> = downcast message 
             requests <- requests + 1UL
@@ -457,14 +484,14 @@ let ServerActor (mailbox:Actor<_>) =
                 if reqStats.ContainsKey key then
                     reqStats <- Map.remove key reqStats
                 reqStats <- Map.add key value reqStats
-        | "PrintStats" ->
+        | "PrintStatistics" ->
             let mutable perf = 0UL
             let timediff = (DateTime.Now-starttime).TotalSeconds |> uint64
             if requests > 0UL then
                 perf <- requests/timediff
                 usersactor <! UsersPrint(reqStats, perf, DateTime.Now)  
                 printfn "Server uptime = %u seconds, requests served = %u, Avg requests served = %u per second" timediff requests perf
-            system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(5000.0), mailbox.Self, ("PrintStats","","","",DateTime.Now))
+            system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(5000.0), mailbox.Self, ("PrintStatistics","","","",DateTime.Now))
         | _ ->
             ignore()
         return! loop()
@@ -478,8 +505,8 @@ let main argv =
     serverip <- argv.[0] |> string
 
     // Start of the algorithm - spawn Boss, the delgator
-    let boss = spawn system "ServerActor" ServerActor
-    boss <! ("Start","","","",DateTime.Now)
+    let serverMainRef = spawn system "ServerRequestsHandler" ServerRequestsHandler
+    serverMainRef <! ("Start","","","",DateTime.Now)
     system.WhenTerminated.Wait()
 
     0
