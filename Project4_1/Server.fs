@@ -73,10 +73,6 @@ type TweetMessages =
     | PrintTweetStats of (Map<string,Set<string>>*Map<string,string>*uint64)
     | IncTweet of (string)
 
-type RequestHandlerMessages =
-    | Start
-    | 
-
 let TweetActor (mailbox:Actor<_>) = 
     let mutable cprinters = Map.empty
     let mutable tweetCount = 0.0
