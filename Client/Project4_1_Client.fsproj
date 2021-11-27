@@ -8,7 +8,7 @@
 
   <ItemGroup>
     <Compile Include="RemoteMessages.fs" />
-    <Compile Include="Program.fs" />
+    <Compile Include="Client.fs" />
   </ItemGroup>
 
   <ItemGroup>
