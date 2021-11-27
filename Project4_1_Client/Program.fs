@@ -200,7 +200,7 @@ let ClientAdminActor (mailbox:Actor<_>) =
     let mutable usersList = []
     let mutable subsrank = Map.empty
     let server = system.ActorSelection(
-                   sprintf "akka.tcp://TwitterServer@%s:%s/user/ServerActor" serverip port)
+                   sprintf "akka.tcp://TwitterServer@%s:%s/user/ServerRequestsHandler" serverip port)
     
     let hashTagsList = ["lockdown";"metoo";"covid19";"blacklivesmatter";"crypto";"crowdfunding";"giveaway";"contest";
                         "blackhistorymonth";"womenshistorymonth";"cryptocurrency";"womensday";"happybirthday";
