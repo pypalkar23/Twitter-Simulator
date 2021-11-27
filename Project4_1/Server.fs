@@ -1,16 +1,14 @@
-module s
+
 open System
-open System.Threading
-open System.Net
 open Akka.Actor
-open System.Net.Sockets
 open Akka.FSharp
 open Akka.Configuration
 open System.IO
-open System.Text
+open RemoteMessages
+open Akka.Serialization
 
 let mutable serverip = "0.0.0.0"
-let path = "PerfStats.txt"
+let path = "Performance.log"
 
 // Configuration
 let configuration = 
@@ -21,6 +19,12 @@ let configuration =
             actor {
                 provider = ""Akka.Remote.RemoteActorRefProvider, Akka.Remote""
             }
+             serializers {
+                    hyperion = ""Akka.Serialization.HyperionSerializer, Akka.Serialization.Hyperion""
+            }
+            serialization-bindings {
+                    ""System.Object"" = hyperion
+            }
             remote.helios.tcp {
                 transport-protocol = tcp
                 port = 8282
@@ -30,9 +34,12 @@ let configuration =
 
 let system = ActorSystem.Create("TwitterServer", configuration)
 
-type ServerRequestMessages =
+type InternalMessage =
     | PrintStatistics
-    
+    | ServiceStats of string*string
+    | Start
+
+
 type ClientMessages = 
     | AckUserReg of (string*string)
 
@@ -108,7 +115,7 @@ let TweetActor (mailbox:Actor<_>) =
             usersActor <! UpdateFeeds(cid,uid,twt, "tweeted", DateTime.Now)
             twTotalTime <- twTotalTime + (timestamp.Subtract reqTime).TotalMilliseconds
             let averageTime = twTotalTime / tweetCount
-            boss <! ("ServiceStats","","Tweet",(averageTime |> string),DateTime.Now)
+            boss <! ServiceStats("Tweet",(averageTime |> string))
 
         | IncTweet(uid) ->
             if usersTweetCount.ContainsKey uid then 
@@ -167,7 +174,7 @@ let RetweetActor (mailbox:Actor<_>) =
                 cprinters.[cid] <! sprintf "[%s][RE_TWEET] %s retweeted -> %s" (timestamp.ToString()) uid randTweet
                 reTweetTime <- reTweetTime + (timestamp.Subtract reqTime).TotalMilliseconds
                 let averageTime = reTweetTime / reTweetCount
-                mailbox.Sender() <! ("ServiceStats","","ReTweet",(averageTime |> string),DateTime.Now)
+                mailbox.Sender() <! ServiceStats("ReTweet",(averageTime |> string))
                 // printfn "cnt %f, totaltime %f, avg %f" reTweetCount reTweetTime averageTime 
                 usersactor <! UpdateFeeds(cid,uid,randTweet,"retweeted",DateTime.Now)
                 tweetactor <! IncTweet(uid)                   
@@ -253,7 +260,7 @@ let HashTagsActor (mailbox:Actor<_>) =
                 queryHTTotalTime <- queryHTTotalTime + (timestamp.Subtract reqTime).TotalMilliseconds
                 let averageHTTime = (queryHTTotalTime / queryHTCount)
                 // printfn "cnt %f, totaltime %f, avg %f" queryHTCount queryHTTotalTime averageHTTime
-                mailbox.Sender() <! ("ServiceStats","","QueryHashTag",(averageHTTime |> string),DateTime.Now)
+                mailbox.Sender() <! ServiceStats("QueryHashTag",(averageHTTime |> string))
         return! loop()
     }
     loop()
@@ -311,7 +318,7 @@ let MentionsActor (mailbox:Actor<_>) =
                     cprinters.[cid] <! sprintf "[%s][QUERY_MENTION] by user %s: No tweets for user @%s" (timestamp.ToString()) uid mention
                 queryTotalTime <- queryTotalTime + (timestamp.Subtract reqTime).TotalMilliseconds
                 let averageTime = queryTotalTime / queryCount
-                mailbox.Sender() <! ("ServiceStats","","QueryMentions",(averageTime |> string),DateTime.Now)
+                mailbox.Sender() <! ServiceStats("QueryMentions",(averageTime |> string))
         return! loop()
     }
     loop()
@@ -390,7 +397,7 @@ let ServerUsersActor (mailbox:Actor<_>) =
             followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds 
 
         let averageTime = followTime / userServiceCount
-        mailbox.Sender() <! ("ServiceStats","","Follow/Offline/Online",(averageTime |> string),DateTime.Now)         
+        mailbox.Sender() <! ServiceStats("Follow/Offline/Online",(averageTime |> string))         
         return! loop()
     }
     loop()
@@ -416,28 +423,12 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
 
     let rec loop () = actor {
         let! (message:obj) = mailbox.Receive()
-        let (mtype,_,_,_,_) : Tuple<string,string,string,string,DateTime> = downcast message 
+        //let (mtype,_,_,_,_) : Tuple<string,string,string,string,DateTime> = downcast message 
         let timestamp = DateTime.Now
         match message with
         | :? Tuple<string,string,string,string,DateTime> as generalReply ->
             let (mtype,_,_,_,_) : Tuple<string,string,string,string,DateTime> = downcast message
             match mtype with
-            | "Start" ->
-                printfn "Start!!"      
-                hashtagactor <- spawn system (sprintf "HashTagsActor") HashTagsActor
-                tweetactor <- spawn system (sprintf "TweetActor") TweetActor
-                mentionsactor <- spawn system (sprintf "MentionsActor") MentionsActor
-                usersactor <- spawn system (sprintf "UsersActor") ServerUsersActor
-                retweetactor <- spawn system (sprintf "RetweetActor") RetweetActor
-                showfeedactor <- spawn system (sprintf "ShowfeedActor") ShowfeedActor
-                //send actors the needed info
-                usersactor <! Init(retweetactor, showfeedactor, tweetactor)
-                tweetactor <! InitTweet(hashtagactor,usersactor)
-                mentionsactor <! InitMentions(tweetactor)
-
-                retweetactor <! InitRetweet(usersactor,tweetactor)
-                starttime <- DateTime.Now
-                system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(5000.0), mailbox.Self, ("PrintStatistics","","","",DateTime.Now))
             | "ClientRegister" -> 
                 let (_,cid,cliIP,port,_) : Tuple<string,string,string,string,DateTime> = downcast message 
                 requests <- requests + 1UL
@@ -480,31 +471,63 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 let (_,cid,uid,tag,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message  
                 requests <- requests + 1UL
                 hashtagactor <! QueryHashtags(cid,uid,tag,reqTime)
-            | "ServiceStats" ->
+            (*| "ServiceStats" ->
+                //done
                 let (_,_,key,value,_) : Tuple<string,string,string,string,DateTime> = downcast message 
                 if key <> "" then
                     if reqStats.ContainsKey key then
                         reqStats <- Map.remove key reqStats
                     reqStats <- Map.add key value reqStats
             | "PrintStatistics" ->
+                //done
                 let mutable perf = 0UL
                 let timediff = (DateTime.Now-starttime).TotalSeconds |> uint64
                 if requests > 0UL then
                     perf <- requests/timediff
                     usersactor <! UsersPrint(reqStats, perf, DateTime.Now)  
                     printfn "Server uptime = %u seconds, requests served = %u, Avg requests served = %u per second" timediff requests perf
-                system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(5000.0), mailbox.Self, ("PrintStatistics","","","",DateTime.Now))
+                system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(5000.0), mailbox.Self, PrintStatistics)*)
             | _ -> ignore()
-        | :? ServerRequestMessages as sReqMsg ->
-            match sReqMsg with
-            PrintStatistics ->
+        | :? InternalMessage as internalMsg ->
+            match internalMsg with
+            | PrintStatistics ->
                 let mutable perf = 0UL
                 let timediff = (DateTime.Now-starttime).TotalSeconds |> uint64
                 if requests > 0UL then
                     perf <- requests/timediff
                     usersactor <! UsersPrint(reqStats, perf, DateTime.Now)  
                     printfn "Server uptime = %u seconds, requests served = %u, Avg requests served = %u per second" timediff requests perf
-                system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(5000.0), mailbox.Self, ("PrintStatistics","","","",DateTime.Now))
+                system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(5000.0), mailbox.Self, PrintStatistics)
+            | ServiceStats(key,value) ->
+              if key <> "" then
+                    if reqStats.ContainsKey key then
+                        reqStats <- Map.remove key reqStats
+                    reqStats <- Map.add key value reqStats 
+            | Start ->
+                printfn "Start!!"      
+                hashtagactor <- spawn system (sprintf "HashTagsActor") HashTagsActor
+                tweetactor <- spawn system (sprintf "TweetActor") TweetActor
+                mentionsactor <- spawn system (sprintf "MentionsActor") MentionsActor
+                usersactor <- spawn system (sprintf "UsersActor") ServerUsersActor
+                retweetactor <- spawn system (sprintf "RetweetActor") RetweetActor
+                showfeedactor <- spawn system (sprintf "ShowfeedActor") ShowfeedActor
+                //send actors the needed info
+                usersactor <! Init(retweetactor, showfeedactor, tweetactor)
+                tweetactor <! InitTweet(hashtagactor,usersactor)
+                mentionsactor <! InitMentions(tweetactor)
+
+                retweetactor <! InitRetweet(usersactor,tweetactor)
+                starttime <- DateTime.Now
+                system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(5000.0), mailbox.Self, PrintStatistics)
+        (*| :? RemoteMessage as rMsg ->
+            match rMsg with 
+            | ClientRegister(cid,cliIP,port) ->
+                printfn "In the new client Register Created"
+                requests <- requests + 1UL
+                let clientp = system.ActorSelection(sprintf "akka.tcp://TwitterClient@%s:%s/user/Printer" cliIP port)
+                clientprinters <- Map.add cid clientp clientprinters
+                sendToAllActors clientprinters
+                mailbox.Sender() <! ("AckClientReg",sprintf "[%s][CLIENT_REGISTER] Client %s registered with server" (timestamp.ToString()) cid,"","","")*)
         | _ ->()
         
         return! loop()
@@ -519,7 +542,7 @@ let main argv =
 
     // Start of the algorithm - spawn Boss, the delgator
     let serverMainRef = spawn system "ServerRequestsHandler" ServerRequestsHandler
-    serverMainRef <! ("Start","","","",DateTime.Now)
+    serverMainRef <! Start
     system.WhenTerminated.Wait()
 
     0

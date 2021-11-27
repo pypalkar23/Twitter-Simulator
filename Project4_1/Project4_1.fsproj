@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="RemoteMessages.fs" />
     <Compile Include="Server.fs" />
   </ItemGroup>
 
@@ -14,6 +15,7 @@
     <PackageReference Include="Akka" Version="1.4.25" />
     <PackageReference Include="Akka.FSharp" Version="1.4.25" />
     <PackageReference Include="Akka.Remote" Version="1.4.25" />
+    <PackageReference Include="Akka.Serialization.Hyperion" Version="1.4.25" />
   </ItemGroup>
 
 </Project>

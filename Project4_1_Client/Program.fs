@@ -5,7 +5,7 @@ open Akka.FSharp
 open Akka.Configuration
 open FSharp.Data
 open Akka.Serialization
-
+open RemoteMessages
 (*
 {
     "local_ip":"localhost",
@@ -25,8 +25,8 @@ let values = configJson.GetSample()
 
 //config read from the file
 let local_ip = values.LocalIp
-let port = values.Port.ToString()
-let id = values.Id
+let id = values.Id.ToString()
+let port = (values.Id + values.Port) |> string
 let usersPerClient = values.UserCount
 let clientCount = values.ClientCount
 let serverip = values.ServerIp
@@ -191,7 +191,7 @@ let ClientAdminActor (mailbox:Actor<_>) =
     let mutable id = ""
     let mutable nusers = 0
     let mutable nclients = 0
-    let mutable port = "6500"
+    let mutable port = "8282"
     let mutable clientslist = []
     let mutable cur_offline = Set.empty
     let mutable registered_list = []
@@ -214,13 +214,12 @@ let ClientAdminActor (mailbox:Actor<_>) =
         match msg with
         | :? BossMessage as bm ->
             match bm with 
-            | Start(idParam, numUsers, numClients, portParam) ->
+            | Start(idParam, numUsers, numClients, clientPortParam) ->
                 let timestamp = DateTime.Now
-                //let (_,i, u, n, p) : Tuple<string,string,string,string,string> = downcast message 
                 id <- idParam
                 nusers <- numUsers
                 nclients <- numClients
-                port <- portParam
+                port <- clientPortParam
                 printerRef <! sprintf "Starting twitter client with Id: %s " id
                 let mutable usersarr = [| 1 .. nusers |]
                 // printfn "usersarr=%A" usersarr
@@ -242,7 +241,8 @@ let ClientAdminActor (mailbox:Actor<_>) =
                     subsrank <- Map.add (sprintf "%s_%s" id userkey) ((nusers-1)/i) subsrank
                     intervalmap <- Map.add (sprintf "%s_%s" id userkey) i intervalmap
 
-                server <! ("ClientRegister",id,local_ip,port,timestamp)
+                //server <! ClientRegister(id,local_ip,port)
+                server <! ("ClientRegister",id,local_ip,port,DateTime.Now)
                 for i in [1 .. nclients] do
                     let istr = i |> string
                     clientslist <- istr :: clientslist
@@ -257,9 +257,9 @@ let ClientAdminActor (mailbox:Actor<_>) =
                 let ref = spawn system (sprintf "User_%s" curid) UserActor
                 useraddress <- Map.add curid ref useraddress
                 let subsstr = subsrank.[curid] |> string
+                //server <! ("UserRegister", id, curid, subsstr,timestamp)
                 server <! ("UserRegister", id, curid, subsstr,timestamp)
                 registered_list <- curid :: registered_list
-
                 if numcurid < nusers then
                     numcurid <- numcurid+1
                     let stnumcurid = numcurid
