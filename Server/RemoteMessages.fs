@@ -16,6 +16,7 @@ type RemoteMessage = {
     msg : string option
 }
 
+// ----- (Client -> Server) Messages Payloads Start-----
 let ClientRegisterPayload cid cliIp port =
     let payload = {
         operation = "ClientRegister"
@@ -168,7 +169,9 @@ let QueryHashtags cid userid tag reqTime =
         msg = None
     }
     Json.serialize payload 
+// ----- (Client -> Server) Messages Payloads End -----
 
+// ----- (Server -> Client) Messages Payloads Start -----
 let AckUserRegPayload uid msg =
     let payload = {
         operation = "AckUserReg"
@@ -186,6 +189,7 @@ let AckUserRegPayload uid msg =
     }
 
     Json.serialize payload
+
 
 let AckOnlinePayload uid =
     let payload = {
@@ -222,7 +226,7 @@ let AckClientRegPayload =
     }
 
     Json.serialize payload
-
+// ----- (Server -> Client) Messages Payloads End -----
 
 (*
     "ClientRegister" -> let (_,cid,cliIP,port,_)
