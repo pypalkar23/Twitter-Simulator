@@ -30,4 +30,3 @@ hs_err_pid*
 **/obj
 **/.DS_Store
 **/.vscode
-**/Performance.log
