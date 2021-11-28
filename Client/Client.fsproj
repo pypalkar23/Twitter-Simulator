@@ -8,7 +8,7 @@
 
   <ItemGroup>
     <Compile Include="RemoteMessages.fs" />
-    <Compile Include="Server.fs" />
+    <Compile Include="Client.fs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -16,6 +16,8 @@
     <PackageReference Include="Akka.FSharp" Version="1.4.25" />
     <PackageReference Include="Akka.Remote" Version="1.4.25" />
     <PackageReference Include="Akka.Serialization.Hyperion" Version="1.4.25" />
+    <PackageReference Include="FSharp.Data" Version="4.2.5" />
+    <PackageReference Include="FSharp.Json" Version="0.4.1" />
   </ItemGroup>
 
 </Project>
