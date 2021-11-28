@@ -139,7 +139,7 @@ let UserActor (mailbox:Actor<_>) =
                 | "QueryHashtags" ->
                     let hashTag = topHashTags.[htagRandReq.Next(topHashTags.Length)]
                     //server <! ("QueryHashtags",cliId,myId,hashTag,DateTime.Now)
-                    server <! QueryHashtags cliId myId hashTag DateTime.Now
+                    server <! QueryHashtagsPayload cliId myId hashTag DateTime.Now
                 | "QueryMentions" ->
                     let mutable mUser = [1 .. usersCount].[mentionsRandReq.Next(usersCount)] |> string
                     let mutable randclid = clientList.[clientRand.Next(clientList.Length)]
@@ -317,11 +317,11 @@ let ClientAdminActor (mailbox:Actor<_>) =
             let replyType = jsonMsg.operation
             
             match replyType with 
-            | "AckClientReg" ->
+            | RemoteMessages.clientRegisterAckOp ->
                 mailbox.Self <! RegisterUser(1)
                 system.Scheduler.ScheduleTellOnce(TimeSpan.FromSeconds(5.0), mailbox.Self, Offline)
 
-            | "AckUserReg" ->
+            | RemoteMessages.userRegisterAckOp ->
                 let uid = jsonMsg.userid.Value 
                 let msg = jsonMsg.msg.Value
                 printerRef <! msg
@@ -330,7 +330,7 @@ let ClientAdminActor (mailbox:Actor<_>) =
                     baseInterval <- 5            
                 useraddress.[uid] <! Ready(uid,clientslist,server,nusers,id,hashTagsList,(baseInterval*intervalmap.[uid]))
 
-            | "AckOnline" ->
+            | RemoteMessages.userOnlineAckOp ->
                   //let (_,uid,_,_,_) : Tuple<string,string,string,string,string> = downcast msg
                   let uid = jsonMsg.userid.Value
                   useraddress.[uid] <! GoOnline

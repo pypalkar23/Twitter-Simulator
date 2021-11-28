@@ -1,6 +1,44 @@
 module RemoteMessages
 open System
 open FSharp.Json
+
+[<Literal>]
+let clientRegOp = "ClientRegister"
+
+[<Literal>]
+let userRegOp ="UserRegister"
+
+[<Literal>]
+let toggleStateOnlineOp = "GoOnline"
+
+[<Literal>]
+let toggleStateOfflineOp = "GoOffline"
+
+[<Literal>]
+let followOp = "Follow"
+
+[<Literal>]
+let tweetOp = "Tweet"
+
+[<Literal>]
+let retweetOp = "ReTweet"
+
+[<Literal>]
+let searchByMentionsOp = "QueryMentions"
+
+[<Literal>]
+let searchByHashtagsOp = "QueryHashtags"
+
+[<Literal>]
+let userRegisterAckOp = "AckUserReg"
+
+[<Literal>]
+let clientRegisterAckOp = "AckClientReg"
+
+[<Literal>]
+let userOnlineAckOp = "AckOnline"
+
+
 type RemoteMessage = {
     operation: string
     cid:string
@@ -19,7 +57,7 @@ type RemoteMessage = {
 // ----- (Client -> Server) Messages Payloads Start-----
 let ClientRegisterPayload cid cliIp port =
     let payload = {
-        operation = "ClientRegister"
+        operation = clientRegOp
         cid = cid
         port = Some(port)
         cliIp = Some(cliIp)
@@ -36,7 +74,7 @@ let ClientRegisterPayload cid cliIp port =
 
 let UserRegisterPayload cid userid subscount reqTime =
     let payload={
-        operation = "UserRegister"
+        operation = userRegOp
         cid = cid
         userid = Some(userid)
         subscount = Some(subscount)
@@ -53,7 +91,7 @@ let UserRegisterPayload cid userid subscount reqTime =
 
 let OnlinePayload cid userid reqTime =
     let payload={
-        operation = "GoOnline"
+        operation = toggleStateOnlineOp
         cid = cid
         userid = Some(userid)
         reqTime = Some(reqTime)
@@ -70,7 +108,7 @@ let OnlinePayload cid userid reqTime =
 
 let OfflinePayload cid userid reqTime =
     let payload={
-        operation = "GoOffline"
+        operation = toggleStateOfflineOp
         cid = cid
         userid = Some(userid)
         reqTime = Some(reqTime)
@@ -87,7 +125,7 @@ let OfflinePayload cid userid reqTime =
 
 let FollowPayload cid userid followingid reqTime =
     let payload={
-        operation = "Follow"
+        operation = followOp
         cid = cid
         userid = Some(userid)
         followingid = Some(followingid)
@@ -104,7 +142,7 @@ let FollowPayload cid userid followingid reqTime =
 
 let TweetPayload cid userid twt reqTime =
     let payload = {
-        operation = "Tweet"
+        operation = tweetOp
         cid = cid
         userid = Some(userid)
         twt = Some(twt)
@@ -119,9 +157,9 @@ let TweetPayload cid userid twt reqTime =
     }
     Json.serialize payload 
 
-let Retweet cid user reqTime =
+let RetweetPayload cid user reqTime =
     let payload = {
-        operation = "Retweet"
+        operation = retweetOp
         cid = cid
         userid = Some(user)
         reqTime = Some(reqTime)
@@ -136,9 +174,9 @@ let Retweet cid user reqTime =
     }
     Json.serialize payload 
 
-let QueryMentions cid userid mention reqTime =
+let QueryMentionsPayload cid userid mention reqTime =
     let payload = {
-        operation = "QueryMentions"
+        operation = searchByMentionsOp
         cid = cid
         userid = Some(userid)
         mention = Some(mention)
@@ -153,9 +191,9 @@ let QueryMentions cid userid mention reqTime =
     }
     Json.serialize payload 
 
-let QueryHashtags cid userid tag reqTime =
+let QueryHashtagsPayload cid userid tag reqTime =
     let payload = {
-        operation = "QueryHashtags"
+        operation = searchByHashtagsOp
         cid = cid
         userid = Some(userid)
         tag = Some(tag)
@@ -174,7 +212,7 @@ let QueryHashtags cid userid tag reqTime =
 // ----- (Server -> Client) Messages Payloads Start -----
 let AckUserRegPayload uid msg =
     let payload = {
-        operation = "AckUserReg"
+        operation = userRegisterAckOp
         userid = Some(uid)
         msg = Some(msg)
         cid = ""
@@ -193,7 +231,7 @@ let AckUserRegPayload uid msg =
 
 let AckOnlinePayload uid =
     let payload = {
-        operation = "AckOnline"
+        operation = userOnlineAckOp
         userid = Some(uid)
         msg = None
         cid = ""
@@ -211,7 +249,7 @@ let AckOnlinePayload uid =
 
 let AckClientRegPayload =
     let payload = {
-        operation = "AckClientReg"
+        operation = clientRegisterAckOp
         userid = None
         msg = None
         cid = ""

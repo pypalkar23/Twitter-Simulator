@@ -457,7 +457,7 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
             let jsonMsg = Json.deserialize<RemoteMessage> remoteMsg
             let operation = jsonMsg.operation
             match operation with 
-            | "ClientRegister" -> 
+            | RemoteMessages.clientRegOp -> 
                 let cid = jsonMsg.cid
                 let cliIP = jsonMsg.cliIp.Value
                 let port = jsonMsg.port.Value
@@ -467,7 +467,7 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 sendToAllActors clientprinters
                 mailbox.Sender() <! AckClientRegPayload
 
-            | "UserRegister" ->
+            | RemoteMessages.userRegOp ->
                 let cid = jsonMsg.cid
                 let userid = jsonMsg.userid.Value
                 let subscount = jsonMsg.subscount.Value
@@ -478,7 +478,7 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 let st = sprintf "[%s][USER_REGISTER] User %s registered with server" (timestamp.ToString()) userid
                 mailbox.Sender() <! AckUserRegPayload userid st
             
-            | "GoOnline" ->
+            | RemoteMessages.toggleStateOnlineOp ->
                 //let (_,cid,userid,_,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
                 let cid = jsonMsg.cid
                 let userid = jsonMsg.userid.Value
@@ -486,7 +486,7 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 requests <- requests + 1UL
                 usersactor <! Online(cid, userid, mailbox.Sender(),reqTime)
             
-            | "GoOffline" ->
+            | RemoteMessages.toggleStateOfflineOp ->
                 //let (_,cid,userid,_,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
                 let cid = jsonMsg.cid
                 let userid = jsonMsg.userid.Value
@@ -494,7 +494,7 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 requests <- requests + 1UL
                 usersactor <! Offline(cid, userid,reqTime)
             
-            | "Follow" ->
+            | RemoteMessages.followOp ->
                 //let (_,cid,userid,followingid,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
                 let cid = jsonMsg.cid
                 let userid = jsonMsg.userid.Value
@@ -503,7 +503,7 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 requests <- requests + 1UL
                 usersactor <! Follow(cid, userid, followingid, reqTime)
 
-            | "Tweet" ->
+            | RemoteMessages.tweetOp ->
                 //let (_,cid,userid,twt,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message
                 let cid = jsonMsg.cid
                 let userid = jsonMsg.userid.Value
@@ -512,7 +512,7 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 requests <- requests + 1UL
                 mentionsactor <! ParseMentions(cid,userid,twt,reqTime)
 
-            | "ReTweet" ->
+            | RemoteMessages.retweetOp ->
                 //let (_,cid,userid,_,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
                 let cid = jsonMsg.cid
                 let userid = jsonMsg.userid.Value
@@ -520,7 +520,7 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 requests <- requests + 1UL
                 retweetactor <! Retweet(cid,userid,reqTime)
 
-            | "QueryMentions" ->
+            | RemoteMessages.searchByMentionsOp ->
                 //let (_,cid,uid,mention,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message  
                 let cid = jsonMsg.cid
                 let mention = jsonMsg.mention.Value
@@ -529,7 +529,7 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 requests <- requests + 1UL
                 mentionsactor <! QueryMentions(cid,uid,mention,reqTime)
 
-            | "QueryHashtags" ->
+            | RemoteMessages.searchByHashtagsOp ->
                 //let (_,cid,uid,tag,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message  
                 let cid = jsonMsg.cid
                 let tag = jsonMsg.tag.Value
