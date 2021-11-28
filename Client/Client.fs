@@ -6,6 +6,7 @@ open Akka.Configuration
 open FSharp.Data
 open Akka.Serialization
 open RemoteMessages
+open System.IO
 (*
 {
     "local_ip":"localhost",
@@ -23,14 +24,17 @@ let resolutionFolder = __SOURCE_DIRECTORY__
 type configJson = JsonProvider<"config.json", ResolutionFolder = resolutionFolder>
 let values = configJson.GetSample()
 
+let args = Environment.GetCommandLineArgs()
+
 //config read from the file
 let local_ip = values.LocalIp
-let id = values.Id.ToString()
-let port = (values.Id + values.Port) |> string
+let id = args.[1] |> string
+let port = (int(id) + values.Port) |> string
 let usersPerClient = values.UserCount
 let clientCount = values.ClientCount
 let serverip = values.ServerIp
 
+printfn "port = %s" port
 // Configuration
 let config = 
     ConfigurationFactory.ParseString(
@@ -76,10 +80,14 @@ type UserMessages =
 
 // Printer Actor - To print the output
 
+let path = sprintf "Client%s.log" id
+printfn "%s" path
+
 let printerActor (mailbox:Actor<_>) = 
     let rec loop () = actor {
         let! (message:obj) = mailbox.Receive()
         printfn "%A" message
+        File.AppendAllText(path, sprintf "\n%A" message)
         return! loop()
     }
     loop()
@@ -317,8 +325,14 @@ let ClientAdminActor (mailbox:Actor<_>) =
     }   
     loop()
 
-// Start of the algorithm - spawn Boss, the delgator
-let boss = spawn system "AdminActor" ClientAdminActor
-boss <! Start(id, usersPerClient, clientCount, port)
-system.WhenTerminated.Wait()|>ignore
 
+
+[<EntryPoint>]
+let main argv =
+
+    // Start of the algorithm - spawn Boss, the delgator
+    let boss = spawn system "AdminActor" ClientAdminActor
+    boss <! Start(id, usersPerClient, clientCount, port)
+    system.WhenTerminated.Wait()|>ignore
+
+    0
