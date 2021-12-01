@@ -28,7 +28,7 @@ let configuration =
 
 let system = ActorSystem.Create("TwitterServer", configuration)
 
-type InternalMessage =
+type ServerInternalMessage =
     | PrintStatistics
     | ServiceStats of string*string
     | Start
@@ -97,7 +97,7 @@ let TweetActor (mailbox:Actor<_>) =
         | Tweet(cid, uid, twt, reqTime,boss) ->
             tweetCount <- tweetCount+1.0
             let mutable twCount = 0
-            cprinters.[cid] <! sprintf "[%s][TWEET] %s" (timestamp.ToString()) twt
+            cprinters.[cid] <! sprintf "%s | <TWEET> %s" (timestamp.ToString()) twt
 
             if usersTweetCount.ContainsKey uid then 
                 twCount <- usersTweetCount.[uid] + 1
@@ -119,15 +119,15 @@ let TweetActor (mailbox:Actor<_>) =
         | PrintTweetStats(followings,reqStats,perf) ->
             File.WriteAllText(path, "")
             File.AppendAllText(path, ("\n"+timestamp.ToString()))
-            File.AppendAllText(path, (sprintf "\nNumber of user requests handled per second = %u\n" perf))
-            File.AppendAllText(path, "\nAverage time taken for service(s) in ms:")
+            File.AppendAllText(path, (sprintf "\nAverage User Requests handled per second = %u\n" perf))
+            File.AppendAllText(path, "\nAverage time taken for each operation in ms:")
             for stat in reqStats do
                 File.AppendAllText(path, (sprintf "\n%s = %s" stat.Key stat.Value))
-            let headers = "\n\nUserID\t#Followers\t#Tweets\n"
+            let headers = "\n\nUserID\tFollowers\tTweets\n"
             File.AppendAllText(path, headers)
             for uid in followings do
                 if usersTweetCount.ContainsKey uid.Key then
-                    let stat = sprintf "%s\t%s\t%s\n" uid.Key (uid.Value.Count |> string) (usersTweetCount.[uid.Key] |> string)
+                    let stat = sprintf "%s\t\t%s\t\t%s\n" uid.Key (uid.Value.Count |> string) (usersTweetCount.[uid.Key] |> string)
                     File.AppendAllText(path, stat)                
         return! loop()
     }
@@ -164,7 +164,7 @@ let RetweetActor (mailbox:Actor<_>) =
             if feedtable.ContainsKey uid then   
                 reTweetCount <- reTweetCount + 1.0
                 let randTweet = feedtable.[uid].[usersRand.Next(feedtable.[uid].Length)]
-                cprinters.[cid] <! sprintf "[%s][RE_TWEET] %s retweeted -> %s" (timestamp.ToString()) uid randTweet
+                cprinters.[cid] <! sprintf "%s | <RE_TWEET> %s retweeted -> %s" (timestamp.ToString()) uid randTweet
                 reTweetTime <- reTweetTime + (timestamp.Subtract reqTime).TotalMilliseconds
                 let averageTime = reTweetTime / reTweetCount
                 mailbox.Sender() <! ServiceStats("ReTweet",(averageTime |> string))
@@ -187,25 +187,25 @@ let ShowfeedActor (mailbox:Actor<_>) =
 
         | ShowFeeds(cid, uid, cadmin) ->
             if feedtable.ContainsKey uid then
-                let mutable feedsTop = ""
-                let mutable fSize = 10
+                let mutable topFeedToShow = ""
+                let mutable feedSize = 10
                 let feedList:List<string> = feedtable.[uid]
                 if feedList.Length < 10 then
-                    fSize <- feedList.Length
-                for i in [0..(fSize-1)] do
-                    feedsTop <- "\n" + feedtable.[uid].[i]
-                cprinters.[cid] <! sprintf "[%s][ONLINE] User %s is online..Feeds -> %s" (timestamp.ToString()) uid feedsTop
+                    feedSize <- feedList.Length
+                for i in [0..(feedSize-1)] do
+                    topFeedToShow <-  topFeedToShow + "\n" + feedtable.[uid].[i]
+                cprinters.[cid] <! sprintf "%s | [ONLINE] User %s is online.. Checkout latest feed %s" (timestamp.ToString()) uid topFeedToShow
             else
-                cprinters.[cid] <! sprintf "[%s][ONLINE] User %s is online..No feeds yet!!!" (timestamp.ToString()) uid
+                cprinters.[cid] <! sprintf "%s | [ONLINE] User %s is online.. No new feed right now!" (timestamp.ToString()) uid
             cadmin <! AckOnlinePayload uid
 
         | UpdateFeedTable(uid, _, twt) ->
-            let mutable listy = []
+            let mutable prevFeed = []
             if feedtable.ContainsKey uid then
-                listy <- feedtable.[uid]
-            listy  <- twt :: listy
+                prevFeed <- feedtable.[uid]
+            prevFeed  <- twt :: prevFeed
             feedtable <- Map.remove uid feedtable
-            feedtable <- Map.add uid listy feedtable
+            feedtable <- Map.add uid prevFeed feedtable
         return! loop()
     }
     loop()
@@ -245,10 +245,10 @@ let HashTagsActor (mailbox:Actor<_>) =
                         hSize <- hashtagsMap.[hashtag].Length
                     let mutable tagsstring = ""
                     for i in [0..(hSize-1)] do
-                        tagsstring <- "\n" + hashtagsMap.[hashtag].[i]
-                    cprinters.[cid] <! sprintf "[%s][QUERY_HASHTAG] by user %s: Recent 10(Max) tweets for hashTag #%s ->%s" (timestamp.ToString()) uid hashtag tagsstring
+                        tagsstring <- tagsstring + "\n\t\t\t" + hashtagsMap.[hashtag].[i]
+                    cprinters.[cid] <! sprintf "%s | [QUERY_#] by user %s: Latest tweets for #%s ->%s" (timestamp.ToString()) uid hashtag tagsstring
                 else    
-                    cprinters.[cid] <! sprintf "[%s][QUERY_HASHTAG] by user %s: No tweets for hashTag #%s" (timestamp.ToString()) uid hashtag
+                    cprinters.[cid] <! sprintf "%s | [QUERY_#] by user %s: No tweets for #%s" (timestamp.ToString()) uid hashtag
                 
                 queryHTTotalTime <- queryHTTotalTime + (timestamp.Subtract reqTime).TotalMilliseconds
                 let averageHTTime = (queryHTTotalTime / queryHTCount)
@@ -305,10 +305,10 @@ let MentionsActor (mailbox:Actor<_>) =
                         mSize <- mentionsMap.[mention].Length
                     let mutable tweetsstring = ""
                     for i in [0..(mSize-1)] do
-                        tweetsstring <- "\n" + mentionsMap.[mention].[i]
-                    cprinters.[cid] <! sprintf "[%s][QUERY_MENTION] by user %s: Recent 10(Max) tweets for user @%s ->%s" (timestamp.ToString()) uid mention tweetsstring
+                        tweetsstring <- tweetsstring + "\n\t\t\t" + mentionsMap.[mention].[i]
+                    cprinters.[cid] <! sprintf "%s | [QUERY_@] by user %s: Latest tweets mentioning @%s ->%s" (timestamp.ToString()) uid mention tweetsstring
                 else
-                    cprinters.[cid] <! sprintf "[%s][QUERY_MENTION] by user %s: No tweets for user @%s" (timestamp.ToString()) uid mention
+                    cprinters.[cid] <! sprintf "%s | [QUERY_@] by user %s: No tweets mentioning @%s" (timestamp.ToString()) uid mention
                 queryTotalTime <- queryTotalTime + (timestamp.Subtract reqTime).TotalMilliseconds
                 let averageTime = queryTotalTime / queryCount
                 mailbox.Sender() <! ServiceStats("QueryMentions",(averageTime |> string))
@@ -352,7 +352,8 @@ let ServerUsersActor (mailbox:Actor<_>) =
             nonactiveusers <- Set.add uid nonactiveusers
             followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds
             userServiceCount <- userServiceCount + 1.0
-            cprinters.[cid] <! sprintf "[%s][OFFLINE] User %s is going offline" (timestamp.ToString()) uid
+           // cprinters.[cid] <! sprintf "[%s][OFFLINE] User %s is going offline" (timestamp.ToString()) uid
+            cprinters.[cid] <! sprintf "%s | [OFFLINE] User %s going offline" (timestamp.ToString()) uid
 
         | Online(cid, uid, cadmin, reqTime) ->
             nonactiveusers <- Set.remove uid nonactiveusers
@@ -367,7 +368,8 @@ let ServerUsersActor (mailbox:Actor<_>) =
                 st <- Set.add uid st
                 followings <- Map.remove fid followings
                 followings <- Map.add fid st followings
-                cprinters.[cid] <! sprintf "[%s][FOLLOW] User %s started following %s" (timestamp.ToString()) uid fid
+               // cprinters.[cid] <! sprintf "[%s][FOLLOW] User %s started following %s" (timestamp.ToString()) uid fid
+                cprinters.[cid] <! sprintf "%s | [FOLLOW] User %s started following %s" (timestamp.ToString()) uid fid
             followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds
 
         | UpdateFeeds(_,uid,twt,msg, reqTime) ->
@@ -379,9 +381,9 @@ let ServerUsersActor (mailbox:Actor<_>) =
                     let splits = id.Split '_'
                     let sendtoid = splits.[0]
                     if msg = "tweeted" then
-                        cprinters.[sendtoid] <! sprintf "[%s][NEW_FEED] For User: %s -> %s" (timestamp.ToString()) id twt    
+                        cprinters.[sendtoid] <! sprintf "%s | [NEW_FEED] For User: %s -> %s" (timestamp.ToString()) id twt    
                     else
-                        cprinters.[sendtoid] <! sprintf "[%s][NEW_FEED] For User: %s -> %s %s - %s" (timestamp.ToString()) id uid msg twt
+                        cprinters.[sendtoid] <! sprintf "%s | [NEW_FEED] For User: %s -> %s %s - %s" (timestamp.ToString()) id uid msg twt
             followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds
 
         | UsersPrint(stats, perf, reqTime) -> 
@@ -416,13 +418,12 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
 
     let rec loop () = actor {
         let! (message:obj) = mailbox.Receive()
-        //let (mtype,_,_,_,_) : Tuple<string,string,string,string,DateTime> = downcast message 
         let timestamp = DateTime.Now
         match message with
-        | :? InternalMessage as internalMsg ->
-            match internalMsg with
+        | :? ServerInternalMessage as internalMessage ->
+            match internalMessage with
             | Start ->
-                printfn "Start!!"      
+                printfn "Twitter Engine Starting "      
                 hashtagactor <- spawn system (sprintf "HashTagsActor") HashTagsActor
                 tweetactor <- spawn system (sprintf "TweetActor") TweetActor
                 mentionsactor <- spawn system (sprintf "MentionsActor") MentionsActor
@@ -444,7 +445,7 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 if requests > 0UL then
                     perf <- requests/timediff
                     usersactor <! UsersPrint(reqStats, perf, DateTime.Now)  
-                    printfn "Server uptime = %u seconds, requests served = %u, Avg requests served = %u per second" timediff requests perf
+                    printfn "Server uptime = %u seconds, Total Requests Served = %u, Avg Requests Served = %u per second" timediff requests perf
                 system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(5000.0), mailbox.Self, PrintStatistics)
 
             | ServiceStats(key,value) ->
@@ -453,10 +454,10 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                         reqStats <- Map.remove key reqStats
                     reqStats <- Map.add key value reqStats 
 
-        | :? string as remoteMsg ->
-            let jsonMsg = Json.deserialize<RemoteMessage> remoteMsg
-            let operation = jsonMsg.operation
-            match operation with 
+        | :? string as remoteMessage ->
+            let jsonMsg = Json.deserialize<RemoteMessage> remoteMessage
+            let requestOperation = jsonMsg.operation
+            match requestOperation with 
             | RemoteMessages.clientRegOp -> 
                 let cid = jsonMsg.cid
                 let cliIP = jsonMsg.cliIp.Value
@@ -475,7 +476,8 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 usersactor <! Register(cid, userid, subscount,reqTime)
                 mentionsactor <! MentionsRegister(cid, userid)
                 requests <- requests + 1UL
-                let st = sprintf "[%s][USER_REGISTER] User %s registered with server" (timestamp.ToString()) userid
+                //let st = sprintf "[%s][USER_REGISTER] User %s registered with server" (timestamp.ToString()) userid
+                let st = sprintf "%s | [USER_REGISTER] User %s registered with server" (timestamp.ToString()) userid
                 mailbox.Sender() <! AckUserRegPayload userid st
             
             | RemoteMessages.toggleStateOnlineOp ->
@@ -495,7 +497,6 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 usersactor <! Offline(cid, userid,reqTime)
             
             | RemoteMessages.followOp ->
-                //let (_,cid,userid,followingid,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
                 let cid = jsonMsg.cid
                 let userid = jsonMsg.userid.Value
                 let followingid = jsonMsg.followingid.Value
@@ -504,7 +505,6 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 usersactor <! Follow(cid, userid, followingid, reqTime)
 
             | RemoteMessages.tweetOp ->
-                //let (_,cid,userid,twt,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message
                 let cid = jsonMsg.cid
                 let userid = jsonMsg.userid.Value
                 let twt = jsonMsg.twt.Value
@@ -513,7 +513,6 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 mentionsactor <! ParseMentions(cid,userid,twt,reqTime)
 
             | RemoteMessages.retweetOp ->
-                //let (_,cid,userid,_,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
                 let cid = jsonMsg.cid
                 let userid = jsonMsg.userid.Value
                 let reqTime = jsonMsg.reqTime.Value
@@ -521,7 +520,6 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 retweetactor <! Retweet(cid,userid,reqTime)
 
             | RemoteMessages.searchByMentionsOp ->
-                //let (_,cid,uid,mention,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message  
                 let cid = jsonMsg.cid
                 let mention = jsonMsg.mention.Value
                 let uid = jsonMsg.userid.Value
@@ -530,7 +528,6 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 mentionsactor <! QueryMentions(cid,uid,mention,reqTime)
 
             | RemoteMessages.searchByHashtagsOp ->
-                //let (_,cid,uid,tag,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message  
                 let cid = jsonMsg.cid
                 let tag = jsonMsg.tag.Value
                 let uid = jsonMsg.userid.Value
@@ -539,79 +536,6 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 hashtagactor <! QueryHashtags(cid,uid,tag,reqTime)
 
             | _ -> ()
-            
-        (* | :? RemoteMessages as rMsg ->
-            match rMsg with 
-            | ClientRegister(cid,cliIP,port) ->
-                printfn "In the new client Register Created"
-                requests <- requests + 1UL
-                let clientp = system.ActorSelection(sprintf "akka.tcp://TwitterClient@%s:%s/user/Printer" cliIP port)
-                clientprinters <- Map.add cid clientp clientprinters
-                sendToAllActors clientprinters
-                mailbox.Sender() <! ("AckClientReg",sprintf "[%s][CLIENT_REGISTER] Client %s registered with server" (timestamp.ToString()) cid,"","","")*)
-                
-        (*| :? Tuple<string,string,string,string,DateTime> as generalReply ->
-            let (mtype,_,_,_,_) : Tuple<string,string,string,string,DateTime> = downcast message
-            match mtype with
-            (*| "ClientRegister" -> 
-                let (_,cid,cliIP,port,_) : Tuple<string,string,string,string,DateTime> = downcast message 
-                requests <- requests + 1UL
-                let clientp = system.ActorSelection(sprintf "akka.tcp://TwitterClient@%s:%s/user/Printer" cliIP port)
-                clientprinters <- Map.add cid clientp clientprinters
-                sendToAllActors clientprinters
-                mailbox.Sender() <! ("AckClientReg",sprintf "[%s][CLIENT_REGISTER] Client %s registered with server" (timestamp.ToString()) cid,"","","")
-            | "UserRegister" ->
-                let (_,cid,userid,subscount,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
-                usersactor <! Register(cid, userid, subscount,reqTime)
-                mentionsactor <! MentionsRegister(cid, userid)
-                requests <- requests + 1UL
-                let st = sprintf "[%s][USER_REGISTER] User %s registered with server" (timestamp.ToString()) userid
-                mailbox.Sender() <! ("AckUserReg",userid,st,"","")
-            | "GoOnline" ->
-                let (_,cid,userid,_,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
-                requests <- requests + 1UL
-                usersactor <! Online(cid, userid, mailbox.Sender(),reqTime)
-            | "GoOffline" ->
-                let (_,cid,userid,_,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
-                requests <- requests + 1UL
-                usersactor <! Offline(cid, userid,reqTime)
-            | "Follow" ->
-                let (_,cid,userid,followingid,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
-                requests <- requests + 1UL
-                usersactor <! Follow(cid, userid, followingid, reqTime)*)
-            (*| "Tweet" ->
-                let (_,cid,userid,twt,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
-                requests <- requests + 1UL
-                mentionsactor <! ParseMentions(cid,userid,twt,reqTime)*)
-            (*| "ReTweet" ->
-                let (_,cid,userid,_,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message   
-                requests <- requests + 1UL
-                retweetactor <! Retweet(cid,userid,reqTime)*)
-            (*| "QueryMentions" ->
-                let (_,cid,uid,mention,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message  
-                requests <- requests + 1UL
-                mentionsactor <! QueryMentions(cid,uid,mention,reqTime)*)
-            (*| "QueryHashtags" ->
-                let (_,cid,uid,tag,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message  
-                requests <- requests + 1UL
-                hashtagactor <! QueryHashtags(cid,uid,tag,reqTime)*)
-            (*| "ServiceStats" ->
-                //done
-                let (_,_,key,value,_) : Tuple<string,string,string,string,DateTime> = downcast message 
-                if key <> "" then
-                    if reqStats.ContainsKey key then
-                        reqStats <- Map.remove key reqStats
-                    reqStats <- Map.add key value reqStats
-            | "PrintStatistics" ->
-                //done
-                let mutable perf = 0UL
-                let timediff = (DateTime.Now-starttime).TotalSeconds |> uint64
-                if requests > 0UL then
-                    perf <- requests/timediff
-                    usersactor <! UsersPrint(reqStats, perf, DateTime.Now)  
-                    printfn "Server uptime = %u seconds, requests served = %u, Avg requests served = %u per second" timediff requests perf
-                system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(5000.0), mailbox.Self, PrintStatistics)*)
-            | _ -> ()*)
 
         | _ ->()
         
@@ -625,7 +549,7 @@ let main argv =
 
     serverip <- argv.[0] |> string
 
-    // Start of the algorithm - spawn Boss, the delgator
+    // Start the Twitter Engine- spawn Request Handler - that delegates the incoming client requests
     let serverMainRef = spawn system "ServerRequestsHandler" ServerRequestsHandler
     serverMainRef <! Start
     system.WhenTerminated.Wait()
