@@ -1,9 +1,9 @@
 {
-    "local_ip":"0.0.0.0",
+    "local_ip":"10.20.196.39",
     "port":"8282",
     "id": 1,
-    "userCount":"1000",
+    "userCount":"5000",
     "clientCount":"3",
-    "server_ip":"0.0.0.0",
+    "server_ip":"10.20.196.39",
     "server_port":"8282"
 }

@@ -42,24 +42,20 @@ let config =
 
 let system = ActorSystem.Create("TwitterClient", config)
 
-
-type BossMessage = 
-    | Start of (string*int*int*string)
-    | RegisterUser of (int)
-    | Offline
-    | AckClientReg
-    | AckOnline of (string)
-    | AckUserReg of (string*string)
-
-type FollowMessages = 
-    | Init of (list<string>*int)
-
 type UserMessages = 
     | Ready of (string*list<string>*ActorSelection*int*string*List<string>*int)
     | GoOnline
     | GoOffline
     | Action
     | ActionTweet
+
+type BossMessage = 
+    | Start of (string*int*int*string)
+    | RegisterUser of (int)
+    | Offline
+
+type FollowMessages = 
+    | Init of (list<string>*int)
 
 // Printer Actor - Prints on console & logs in the logfile
 let path = sprintf "Client%s.log" id
@@ -112,11 +108,11 @@ let UserActor (mailbox:Actor<_>) =
 
         | Action ->
             if isOnline then
-                let actions = ["Follow"; "QueryHashtags"; "QueryMentions"]
+                let actions = [RemoteMessages.FollowUserAction; RemoteMessages.QueryHashtagsUserAction; RemoteMessages.QueryMentionsUserAction]
                 let actionsrand = Random()
                 let act = actions.[actionsrand.Next(actions.Length)]
                 match act with
-                | "Follow" ->
+                | RemoteMessages.FollowUserAction ->
                     let mutable fUser = [1 .. usersCount].[followRand.Next(usersCount)] |> string
                     let mutable randomClientId = clientList.[clientRand.Next(clientList.Length)]
                     let mutable followUser = sprintf "%s_%s" randomClientId fUser
@@ -124,10 +120,10 @@ let UserActor (mailbox:Actor<_>) =
                         fUser <- [1 .. usersCount].[followRand.Next(usersCount)] |> string
                         followUser <- sprintf "%s_%s" randomClientId fUser 
                     server <! FollowPayload cliId myId followUser DateTime.Now
-                | "QueryHashtags" ->
+                | RemoteMessages.QueryHashtagsUserAction ->
                     let hashTag = topHashTags.[htagRandReq.Next(topHashTags.Length)]
                     server <! QueryHashtagsPayload cliId myId hashTag DateTime.Now
-                | "QueryMentions" ->
+                | RemoteMessages.QueryMentionsUserAction ->
                     let mutable mUser = [1 .. usersCount].[mentionsRandReq.Next(usersCount)] |> string
                     let mutable randomClientId = clientList.[clientRand.Next(clientList.Length)]
                     let mutable mentionsUser = sprintf "%s_%s" randomClientId mUser
@@ -137,22 +133,22 @@ let UserActor (mailbox:Actor<_>) =
 
         | ActionTweet ->
             if isOnline then
-                let actions = ["Tweet with only hashtags"; "Tweet"; "Retweet"; "Tweet with mentions and hashtags"]
+                let actions = [RemoteMessages.TweetWithHashtagsUserAction; RemoteMessages.TweetUserAction; RemoteMessages.RetweetUserAction; RemoteMessages.TweetMentionsAndHashtags]
                 let chooseRandomAction = Random()
                 let act = actions.[chooseRandomAction.Next(actions.Length)]
                 match act with
-                | "Tweet" ->
+                | RemoteMessages.TweetUserAction ->
                     tweetCount <- tweetCount+1
                     let tweetMsg = sprintf "%s tweeted -> tweet_%d" myId tweetCount
                     server <! TweetPayload cliId myId tweetMsg DateTime.Now
-                | "ReTweet" ->
+                | RemoteMessages.RetweetUserAction ->
                     server <! RetweetPayload cliId myId DateTime.Now
-                | "Tweet with only hashtags" ->
+                | RemoteMessages.TweetWithHashtagsUserAction ->
                     let hashTag = topHashTags.[htagRand.Next(topHashTags.Length)]
                     tweetCount <- tweetCount+1
                     let tweetMsg = sprintf "%s tweeted -> tweet_%d with hashtag #%s" myId tweetCount hashTag
                     server <! TweetPayload cliId myId tweetMsg DateTime.Now
-                | "Tweet with mentions and hashtags" ->
+                | RemoteMessages.TweetMentionsAndHashtags ->
                     let mutable mUser = [1 .. usersCount].[mentionsRand.Next(usersCount)] |> string
                     let mutable randclid = clientList.[clientRand.Next(clientList.Length)]
                     let mutable mentionsUser = sprintf "%s_%s" randclid mUser
@@ -194,10 +190,10 @@ let ClientAdminActor (mailbox:Actor<_>) =
     let server = system.ActorSelection(
                    sprintf "akka.tcp://TwitterServer@%s:%s/user/ServerRequestsHandler" serverip port)
     
-    let hashTagsList = ["lockdown";"metoo";"covid19";"omicron";"delta";"iamvaccinated";"giveaway";"contest";
-                        "blacklivesmatter";"freedom";"cryptocurrency";"womensday";"happybirthday";
-                        "2021";"indiaelections";"uselections";"internationalmensday";"virdas";
-                        "fall2021";"gogators";"blackfriday";"tech";"womeninstem";"iwon";"photography";
+    let hashTagsList = ["boosters";"UF";"covid19";"omicron";"delta";"iamvaccinated";"giveaway";"contest";
+                        "blacklivesmatter";"freedom";"cryptocurrency";"ipl2021";"happybirthday";
+                        "2021";"farmlaws";"internationalmensday";"eesalacupnamde";
+                        "bagwati";"gogators";"blackfriday";"tech";"womeninstem";"pottermore";"photography";
                         "mondaymotivation";"ootd";"vegan";"traveltuesday";"thanksgiving"]
 
     let rec loop () = actor {
@@ -236,10 +232,6 @@ let ClientAdminActor (mailbox:Actor<_>) =
                     let istr = i |> string
                     clientslist <- istr :: clientslist
 
-            | AckClientReg ->
-                mailbox.Self <! RegisterUser(1)
-                system.Scheduler.ScheduleTellOnce(TimeSpan.FromSeconds(5.0), mailbox.Self, Offline)
-
             | RegisterUser(nextId) ->
                 let mutable numcurid = nextId |> int32
                 let mutable curid = sprintf "%s_%s" id (usersList.[numcurid-1] |> string) 
@@ -252,13 +244,6 @@ let ClientAdminActor (mailbox:Actor<_>) =
                     numcurid <- numcurid+1
                     let stnumcurid = numcurid
                     system.Scheduler.ScheduleTellOnce(TimeSpan.FromMilliseconds(50.0), mailbox.Self, RegisterUser(numcurid))
-
-            | AckUserReg(uid,msg) ->
-                printerRef <! msg
-                let mutable baseInterval = nusers/100
-                if baseInterval < 5 then
-                    baseInterval <- 5            
-                useraddress.[uid] <! Ready(uid,clientslist,server,nusers,id,hashTagsList,(baseInterval*intervalmap.[uid]))
 
             | Offline ->
                 let chooseRandomOffline = Random()
@@ -279,9 +264,6 @@ let ClientAdminActor (mailbox:Actor<_>) =
                 cur_offline <- Set.empty
                 cur_offline <- newset
                 system.Scheduler.ScheduleTellOnce(TimeSpan.FromSeconds(5.0), mailbox.Self, Offline)
-
-            | AckOnline (uid)->
-                useraddress.[uid] <! GoOnline
 
         | :? string as remoteReply ->
             let jsonMsg = Json.deserialize<RemoteMessage> remoteReply

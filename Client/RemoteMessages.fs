@@ -38,6 +38,26 @@ let clientRegisterAckOp = "AckClientReg"
 [<Literal>]
 let userOnlineAckOp = "AckOnline"
 
+[<Literal>]
+let TweetUserAction = "Tweet"
+
+[<Literal>]
+let RetweetUserAction = "ReTweet"
+
+[<Literal>]
+let TweetWithHashtagsUserAction = "Tweet with only hashtags"
+
+[<Literal>]
+let TweetMentionsAndHashtags = "Tweet with mentions and hashtags"
+
+[<Literal>]
+let FollowUserAction = "Follow"
+
+[<Literal>]
+let QueryHashtagsUserAction = "QueryHashtags"
+
+[<Literal>]
+let QueryMentionsUserAction = "QueryMentions"
 
 type RemoteMessage = {
     operation: string

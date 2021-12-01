@@ -38,6 +38,26 @@ let clientRegisterAckOp = "AckClientReg"
 [<Literal>]
 let userOnlineAckOp = "AckOnline"
 
+[<Literal>]
+let TweetUserAction = "Tweet"
+
+[<Literal>]
+let RetweetUserAction = "ReTweet"
+
+[<Literal>]
+let TweetWithHashtagsUserAction = "Tweet with only hashtags"
+
+[<Literal>]
+let TweetMentionsAndHashtags = "Tweet with mentions and hashtags"
+
+[<Literal>]
+let FollowUserAction = "Follow"
+
+[<Literal>]
+let QueryHashtagsUserAction = "QueryHashtags"
+
+[<Literal>]
+let QueryMentionsUserAction = "QueryMentions"
 
 type RemoteMessage = {
     operation: string
@@ -265,16 +285,4 @@ let AckClientRegPayload =
 
     Json.serialize payload
 // ----- (Server -> Client) Messages Payloads End -----
-
-(*
-    "ClientRegister" -> let (_,cid,cliIP,port,_)
-    UserRegister" (_,cid,userid,subscount,reqTime) 
-    "GoOnline" - (_,cid,userid,_,reqTime)
-    GoOffline" (_,cid,userid,_,reqTime)
-    "Follow"(_,cid,userid,followingid,reqTime) 
-    "Tweet" (_,cid,userid,twt,reqTime) 
-    "ReTweet"(_,cid,userid,_,reqTime)
-    "QueryMentions"(_,cid,uid,mention,reqTime)
-    "QueryHashtags" (_,cid,uid,tag,reqTime)
-*)
 

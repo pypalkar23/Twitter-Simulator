@@ -7,7 +7,7 @@ open System.IO
 open FSharp.Json
 open RemoteMessages
 
-let mutable serverip = "0.0.0.0"
+let mutable serverip = "10.20.196.39"
 let path = "Performance.log"
 
 // Configuration
@@ -32,9 +32,6 @@ type ServerInternalMessage =
     | PrintStatistics
     | ServiceStats of string*string
     | Start
-
-type ClientMessages = 
-    | AckUserReg of string*string
 
 type UserMessages = 
     | Init of (IActorRef*IActorRef*IActorRef)
@@ -252,7 +249,6 @@ let HashTagsActor (mailbox:Actor<_>) =
                 
                 queryHTTotalTime <- queryHTTotalTime + (timestamp.Subtract reqTime).TotalMilliseconds
                 let averageHTTime = (queryHTTotalTime / queryHTCount)
-                // printfn "cnt %f, totaltime %f, avg %f" queryHTCount queryHTTotalTime averageHTTime
                 mailbox.Sender() <! ServiceStats("QueryHashTag",(averageHTTime |> string))
         return! loop()
     }
@@ -263,8 +259,8 @@ let MentionsActor (mailbox:Actor<_>) =
     let mutable tweetActor:IActorRef = null
     let mutable mentionsMap = Map.empty
     let mutable cprinters = Map.empty
-    let mutable queryTotalTime = 1.0
-    let mutable queryCount = 1.0
+    let mutable queryMTotalTime = 1.0
+    let mutable queryMCount = 1.0
     let rec loop () = actor {
         let! message = mailbox.Receive() 
         let timestamp = DateTime.Now
@@ -298,7 +294,7 @@ let MentionsActor (mailbox:Actor<_>) =
 
         | QueryMentions(cid,uid,mention,reqTime) ->
             if cprinters.ContainsKey cid then
-                queryCount <- queryCount+1.0
+                queryMCount <- queryMCount+1.0
                 if mentionsMap.ContainsKey mention then
                     let mutable mSize = 10
                     if (mentionsMap.[mention].Length < 10) then
@@ -309,8 +305,8 @@ let MentionsActor (mailbox:Actor<_>) =
                     cprinters.[cid] <! sprintf "%s | [QUERY_@] by user %s: Latest tweets mentioning @%s ->%s" (timestamp.ToString()) uid mention tweetsstring
                 else
                     cprinters.[cid] <! sprintf "%s | [QUERY_@] by user %s: No tweets mentioning @%s" (timestamp.ToString()) uid mention
-                queryTotalTime <- queryTotalTime + (timestamp.Subtract reqTime).TotalMilliseconds
-                let averageTime = queryTotalTime / queryCount
+                queryMTotalTime <- queryMTotalTime + (timestamp.Subtract reqTime).TotalMilliseconds
+                let averageTime = queryMTotalTime / queryMCount
                 mailbox.Sender() <! ServiceStats("QueryMentions",(averageTime |> string))
         return! loop()
     }
@@ -322,8 +318,8 @@ let ServerUsersActor (mailbox:Actor<_>) =
     let mutable showfeedactor:IActorRef = null
     let mutable cprinters = Map.empty
     let mutable users = Set.empty
+    let mutable offlineusers = Set.empty
     let mutable followings = Map.empty
-    let mutable nonactiveusers = Set.empty
     let mutable subsrank = Map.empty
     let mutable userServiceCount = 1.0
     let mutable followTime = 1.0
@@ -349,14 +345,13 @@ let ServerUsersActor (mailbox:Actor<_>) =
             userServiceCount <- userServiceCount + 1.0
 
         | Offline(cid, uid, reqTime) ->
-            nonactiveusers <- Set.add uid nonactiveusers
+            offlineusers <- Set.add uid offlineusers
             followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds
             userServiceCount <- userServiceCount + 1.0
-           // cprinters.[cid] <! sprintf "[%s][OFFLINE] User %s is going offline" (timestamp.ToString()) uid
             cprinters.[cid] <! sprintf "%s | [OFFLINE] User %s going offline" (timestamp.ToString()) uid
 
         | Online(cid, uid, cadmin, reqTime) ->
-            nonactiveusers <- Set.remove uid nonactiveusers
+            offlineusers <- Set.remove uid offlineusers
             showfeedactor <! ShowFeeds(cid, uid, cadmin)
             followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds
             userServiceCount <- userServiceCount + 1.0
@@ -368,7 +363,6 @@ let ServerUsersActor (mailbox:Actor<_>) =
                 st <- Set.add uid st
                 followings <- Map.remove fid followings
                 followings <- Map.add fid st followings
-               // cprinters.[cid] <! sprintf "[%s][FOLLOW] User %s started following %s" (timestamp.ToString()) uid fid
                 cprinters.[cid] <! sprintf "%s | [FOLLOW] User %s started following %s" (timestamp.ToString()) uid fid
             followTime <- followTime + (timestamp.Subtract reqTime).TotalMilliseconds
 
@@ -377,7 +371,7 @@ let ServerUsersActor (mailbox:Actor<_>) =
             for id in followings.[uid] do
                 showfeedactor <! UpdateFeedTable(id, uid, twt) 
                 retweetactor <! RetweetFeedTable(id, uid, twt)
-                if not (nonactiveusers.Contains id) then
+                if not (offlineusers.Contains id) then
                     let splits = id.Split '_'
                     let sendtoid = splits.[0]
                     if msg = "tweeted" then
@@ -476,12 +470,10 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 usersactor <! Register(cid, userid, subscount,reqTime)
                 mentionsactor <! MentionsRegister(cid, userid)
                 requests <- requests + 1UL
-                //let st = sprintf "[%s][USER_REGISTER] User %s registered with server" (timestamp.ToString()) userid
                 let st = sprintf "%s | [USER_REGISTER] User %s registered with server" (timestamp.ToString()) userid
                 mailbox.Sender() <! AckUserRegPayload userid st
             
             | RemoteMessages.toggleStateOnlineOp ->
-                //let (_,cid,userid,_,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
                 let cid = jsonMsg.cid
                 let userid = jsonMsg.userid.Value
                 let reqTime = jsonMsg.reqTime.Value
@@ -489,7 +481,6 @@ let ServerRequestsHandler (mailbox:Actor<_>) =
                 usersactor <! Online(cid, userid, mailbox.Sender(),reqTime)
             
             | RemoteMessages.toggleStateOfflineOp ->
-                //let (_,cid,userid,_,reqTime) : Tuple<string,string,string,string,DateTime> = downcast message 
                 let cid = jsonMsg.cid
                 let userid = jsonMsg.userid.Value
                 let reqTime = jsonMsg.reqTime.Value
