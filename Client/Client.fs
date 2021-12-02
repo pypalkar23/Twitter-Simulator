@@ -191,10 +191,10 @@ let ClientAdminActor (mailbox:Actor<_>) =
                    sprintf "akka.tcp://TwitterServer@%s:%s/user/ServerRequestsHandler" serverip port)
     
     let hashTagsList = ["boosters";"UF";"covid19";"omicron";"delta";"iamvaccinated";"giveaway";"contest";
-                        "blacklivesmatter";"freedom";"cryptocurrency";"ipl2021";"happybirthday";
-                        "2021";"farmlaws";"internationalmensday";"eesalacupnamde";
+                        "blacklivesmatter";"freedom";"cryptocurrency";"ipl2021";"happybirthday";"pitrudevsaurakshnam";
+                        "2021";"farmlaws";"internationalmensday";"eeSalaCupNamde"; "tejaMainHu";"monya";"todamjodam";
                         "bagwati";"gogators";"blackfriday";"tech";"womeninstem";"pottermore";"photography";
-                        "mondaymotivation";"ootd";"vegan";"traveltuesday";"thanksgiving"]
+                        "mondaymotivation";"ootd";"vegan";"traveltuesday";"thanksgiving";"taimur";"devdutt";"mandiryahibanega"]
 
     let rec loop () = actor {
         let! (msg:obj) = mailbox.Receive() 
