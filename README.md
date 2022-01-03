@@ -1,6 +1,6 @@
 # Project 4.1 Twitter Clone with Client Simulator - COP5615
-- Mandar Palkar ( UFID: 2140-6740 )
-- Siddhi Wadgaonkar ( UFID: 9544-2212 )
+- Mandar Palkar
+- Siddhi Wadgaonkar
 
 ## Problem Statement
 To build a Twitter-like Engine clone and test it by simulating multiple clients/users using F# and Akka.NET actors.
